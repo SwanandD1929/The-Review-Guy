@@ -24,6 +24,14 @@ export default function Home() {
         apiService.getMostWatched(),
       ]);
 
+      console.log("Home Page Loaded Movies:", {
+        upcoming: upRes,
+        trending: trendRes,
+        nowPlaying: playRes,
+        topRated: topRes,
+        mostWatched: watchRes
+      });
+
       setUpcoming(upRes || []);
       setTrending(trendRes || []);
       setNowPlaying(playRes || []);

@@ -107,7 +107,7 @@ const getLocalStorageDb = () => {
   let watched = JSON.parse(localStorage.getItem('trg_watched'));
   let watchLater = JSON.parse(localStorage.getItem('trg_watch_later'));
 
-  if (!movies) {
+  if (!movies || movies.length === 0) {
     movies = FALLBACK_SEED;
     localStorage.setItem('trg_movies', JSON.stringify(movies));
   }
@@ -169,31 +169,67 @@ const getFallbackStats = (movieId, fingerprint, db) => {
 
 // Fallback Services mimicking backend
 const localFallback = {
-  getTrending: () => {
-    const db = getLocalStorageDb();
-    return db.movies.map(m => ({
-      ...m,
-      ...getFallbackStats(m.id, fingerprint, db),
-      local_id: m.id
-    }));
+  getTrending: async () => {
+    try {
+      const tmdbMovies = await tmdbClient.getTrending();
+      const db = getLocalStorageDb();
+      return tmdbMovies.map(m => {
+        const localM = db.movies.find(lm => lm.tmdb_id === m.tmdb_id);
+        if (localM) {
+          return {
+            ...localM,
+            ...getFallbackStats(localM.id, fingerprint, db),
+            local_id: localM.id
+          };
+        }
+        return m;
+      });
+    } catch (e) {
+      console.error("localFallback.getTrending error:", e);
+      return [];
+    }
   },
-  getUpcoming: () => {
-    const db = getLocalStorageDb();
-    return db.movies.slice(0, 4).map(m => ({
-      ...m,
-      ...getFallbackStats(m.id, fingerprint, db),
-      local_id: m.id
-    }));
+  getUpcoming: async () => {
+    try {
+      const tmdbMovies = await tmdbClient.getUpcoming();
+      const db = getLocalStorageDb();
+      return tmdbMovies.map(m => {
+        const localM = db.movies.find(lm => lm.tmdb_id === m.tmdb_id);
+        if (localM) {
+          return {
+            ...localM,
+            ...getFallbackStats(localM.id, fingerprint, db),
+            local_id: localM.id
+          };
+        }
+        return m;
+      });
+    } catch (e) {
+      console.error("localFallback.getUpcoming error:", e);
+      return [];
+    }
   },
-  getNowPlaying: () => {
-    const db = getLocalStorageDb();
-    return db.movies.slice(2, 5).map(m => ({
-      ...m,
-      ...getFallbackStats(m.id, fingerprint, db),
-      local_id: m.id
-    }));
+  getNowPlaying: async () => {
+    try {
+      const tmdbMovies = await tmdbClient.getNowPlaying();
+      const db = getLocalStorageDb();
+      return tmdbMovies.map(m => {
+        const localM = db.movies.find(lm => lm.tmdb_id === m.tmdb_id);
+        if (localM) {
+          return {
+            ...localM,
+            ...getFallbackStats(localM.id, fingerprint, db),
+            local_id: localM.id
+          };
+        }
+        return m;
+      });
+    } catch (e) {
+      console.error("localFallback.getNowPlaying error:", e);
+      return [];
+    }
   },
-  getTopRated: () => {
+  getTopRated: async () => {
     const db = getLocalStorageDb();
     return db.movies.map(m => ({
       ...m,
@@ -201,7 +237,7 @@ const localFallback = {
       local_id: m.id
     })).sort((a, b) => b.community_rating - a.community_rating);
   },
-  getMostWatched: () => {
+  getMostWatched: async () => {
     const db = getLocalStorageDb();
     return db.movies.map(m => ({
       ...m,

@@ -138,5 +138,56 @@ export const tmdbClient = {
       console.error('TMDB Details API Error:', e);
     }
     return null;
+  },
+
+  getTrending: async () => {
+    if (!TMDB_API_KEY) {
+      return SEARCH_FALLBACKS;
+    }
+    try {
+      const response = await axios.get(`${BASE_URL}/trending/movie/week`, {
+        params: { api_key: TMDB_API_KEY }
+      });
+      if (response.data && response.data.results) {
+        return response.data.results.map(formatMovie);
+      }
+    } catch (e) {
+      console.error('TMDB Trending API Error:', e);
+    }
+    return SEARCH_FALLBACKS;
+  },
+
+  getUpcoming: async () => {
+    if (!TMDB_API_KEY) {
+      return SEARCH_FALLBACKS.slice(0, 3);
+    }
+    try {
+      const response = await axios.get(`${BASE_URL}/movie/upcoming`, {
+        params: { api_key: TMDB_API_KEY }
+      });
+      if (response.data && response.data.results) {
+        return response.data.results.map(formatMovie);
+      }
+    } catch (e) {
+      console.error('TMDB Upcoming API Error:', e);
+    }
+    return SEARCH_FALLBACKS.slice(0, 3);
+  },
+
+  getNowPlaying: async () => {
+    if (!TMDB_API_KEY) {
+      return SEARCH_FALLBACKS.slice(1, 4);
+    }
+    try {
+      const response = await axios.get(`${BASE_URL}/movie/now_playing`, {
+        params: { api_key: TMDB_API_KEY }
+      });
+      if (response.data && response.data.results) {
+        return response.data.results.map(formatMovie);
+      }
+    } catch (e) {
+      console.error('TMDB Now Playing API Error:', e);
+    }
+    return SEARCH_FALLBACKS.slice(1, 4);
   }
 };
