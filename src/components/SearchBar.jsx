@@ -86,7 +86,7 @@ export default function SearchBar({ value, onChange, onSubmit, placeholder = "Se
                 <img src={s.poster_url} className="h-10 w-7 rounded object-cover flex-shrink-0" alt="" />
                 <div className="flex-grow min-w-0">
                   <div className="text-xs font-semibold text-white truncate">{s.title}</div>
-                  <div className="text-[10px] text-gray-400 truncate">{s.genres ? s.genres.split(',')[0] : 'Drama'}</div>
+                  <div className="text-[10px] text-gray-400 truncate">{s.genres ? (Array.isArray(s.genres) ? s.genres[0] : s.genres.split(',')[0]) : 'Drama'}</div>
                 </div>
               </Link>
             );

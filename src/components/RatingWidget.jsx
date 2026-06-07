@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { Star } from 'lucide-react';
 
-export default function RatingWidget({ initialRating = null, onRate }) {
+export default function RatingWidget({ initialRating = null, onRate, mediaType = 'movie' }) {
   const [hoverRating, setHoverRating] = useState(null);
   const [selectedRating, setSelectedRating] = useState(initialRating);
 
   const getRatingLabel = (rating) => {
-    if (!rating) return 'Rate this film';
+    if (!rating) return mediaType === 'tv' ? 'Rate this TV Show' : 'Rate this film';
     const labels = {
       1: 'Appalling',
       2: 'Horrible',

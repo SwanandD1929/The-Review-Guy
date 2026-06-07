@@ -1,10 +1,19 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link, useNavigate } from 'react-router-dom';
-import { apiService } from '../services/api';
+import { apiService, cleanMovieId } from '../services/api';
 import { tmdbClient } from '../services/tmdb';
 import RatingWidget from '../components/RatingWidget';
 import ReviewCard from '../components/ReviewCard';
-import { Star, Eye, ThumbsUp, Bookmark, Calendar, Clock, User, PenTool, MessageSquare, ChevronLeft } from 'lucide-react';
+import MovieCarousel from '../components/MovieCarousel';
+import { Star, Eye, ThumbsUp, Bookmark, Calendar, Clock, User, PenTool, MessageSquare, ChevronLeft, Award, ShieldAlert, EyeOff, Play } from 'lucide-react';
+
+const GENRE_MAP_REVERSE = {
+  "Action": 28, "Adventure": 12, "Animation": 16, "Comedy": 35,
+  "Crime": 80, "Documentary": 99, "Drama": 18, "Family": 10751,
+  "Fantasy": 14, "History": 36, "Horror": 27, "Music": 10402,
+  "Mystery": 9648, "Romance": 10749, "Science Fiction": 878,
+  "TV Movie": 10770, "Thriller": 53, "War": 10752, "Western": 37
+};
 
 export default function MovieDetails() {
   const { id } = useParams();
@@ -17,30 +26,50 @@ export default function MovieDetails() {
   const [reviewText, setReviewText] = useState('');
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
+  // Recommendations states
+  const [recommendations, setRecommendations] = useState([]);
+
+  // Trailers and Request states
+  const [trailerUrl, setTrailerUrl] = useState(null);
+  const [requestStats, setRequestStats] = useState({ count: 0, has_requested: false });
+
   const fetchMovieDetails = async () => {
     try {
       setLoading(true);
       
-      // Silent on-the-fly TMDB import check
-      if (id && id.startsWith('ext_')) {
-        const tmdbId = id.replace('ext_', '');
-        const details = await tmdbClient.getMovieDetails(tmdbId);
-        if (details) {
-          const saved = await apiService.importMovie(details);
-          const newLocalId = saved.local_id || saved.id;
-          window.dispatchEvent(new Event('user-stats-updated'));
-          navigate(`/movie/${newLocalId}`, { replace: true });
-          return;
-        } else {
-          setError("Failed to fetch details.");
-          return;
-        }
-      }
-
       const data = await apiService.getMovieDetails(id);
       if (data) {
         setMovie(data);
         setError(null);
+
+        // Fetch recommendations using TMDB ID
+        const tmdbId = data.tmdb_id;
+        if (tmdbId) {
+          const firstGenre = data.genres ? (Array.isArray(data.genres) ? data.genres[0] : data.genres.split(',')[0].trim()) : '';
+          const genreId = GENRE_MAP_REVERSE[firstGenre] || 18;
+          try {
+            const recs = await tmdbClient.getRecommendations(tmdbId, genreId);
+            setRecommendations(recs || []);
+          } catch (e) {
+            console.error("Failed to load recommendations:", e);
+          }
+
+          // Fetch trailer
+          try {
+            const trail = await apiService.getMovieTrailer(tmdbId);
+            if (trail && trail.trailer_url) {
+              setTrailerUrl(trail.trailer_url);
+            }
+          } catch (e) {}
+
+          // Fetch request count
+          try {
+            const reqData = await apiService.getReviewRequestCount('movie', tmdbId);
+            setRequestStats(reqData);
+          } catch (e) {}
+        }
+
+        // No moderator status fetch
       } else {
         setError("Movie not found");
       }
@@ -55,6 +84,21 @@ export default function MovieDetails() {
   useEffect(() => {
     fetchMovieDetails();
   }, [id]);
+
+  // Handlers removed
+
+  const handleRequestReview = async () => {
+    if (requestStats.has_requested) return;
+    try {
+      const tmdbId = movie.tmdb_id || movie.id;
+      const res = await apiService.addReviewRequest('movie', tmdbId, movie.title);
+      if (res.success) {
+        setRequestStats({ count: res.count, has_requested: true });
+      }
+    } catch (e) {
+      console.error("Failed to request review:", e);
+    }
+  };
 
   const handleRate = async (ratingVal) => {
     try {
@@ -154,6 +198,8 @@ export default function MovieDetails() {
       {/* Main Details Panel */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 relative -mt-32 sm:-mt-48 lg:-mt-64 z-20 flex flex-col space-y-12">
         
+        {/* Moderator Actions Toolbar Completely Removed */}
+
         {/* Poster & Main Metadata */}
         <div className="flex flex-col md:flex-row items-start md:space-x-8 lg:space-x-12 space-y-6 md:space-y-0 text-left">
           
@@ -201,6 +247,33 @@ export default function MovieDetails() {
               </div>
             </div>
 
+            {/* Watch Trailer & YouTube Review Buttons */}
+            <div className="flex flex-wrap gap-3 pt-1">
+              {trailerUrl && (
+                <a
+                  href={trailerUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center space-x-2 bg-amber-500 hover:bg-amber-400 text-black text-xs font-bold px-5 py-2.5 rounded-xl shadow-lg hover:shadow-amber-500/20 transition-all duration-300"
+                >
+                  <Play className="h-3.5 w-3.5 fill-black" />
+                  <span>Watch Trailer</span>
+                </a>
+              )}
+
+              {movie.youtube_review_url && (
+                <a
+                  href={movie.youtube_review_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center space-x-2 bg-red-600 hover:bg-red-500 text-white text-xs font-bold px-5 py-2.5 rounded-xl shadow-lg hover:shadow-red-600/20 transition-all duration-300"
+                >
+                  <Play className="h-3.5 w-3.5 fill-white" />
+                  <span>Watch YouTube Review</span>
+                </a>
+              )}
+            </div>
+
             {/* Genres Chips */}
             <div className="flex flex-wrap gap-2">
               {movie.genres && (Array.isArray(movie.genres) ? movie.genres : movie.genres.split(',')).map((genre) => (
@@ -232,6 +305,61 @@ export default function MovieDetails() {
             </div>
           </div>
         </div>
+
+        {/* The Review Guy Verdict (Moderator Review) */}
+        {/* The Review Guy Verdict (Moderator Review) or Request Review block */}
+        {((movie.trg_rating !== null && movie.trg_rating !== undefined) || movie.trg_review) ? (
+          <div className="glass-panel p-8 sm:p-10 rounded-3xl border border-amber-500/20 bg-gradient-to-r from-amber-500/[0.04] to-transparent text-left relative overflow-hidden">
+            <div className="absolute top-0 right-0 h-48 w-48 bg-amber-500/5 blur-3xl rounded-full pointer-events-none" />
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-6">
+              <h2 className="text-xl sm:text-2xl font-serif text-white tracking-wide flex items-center space-x-2.5">
+                <Award className="h-6 w-6 text-amber-400" />
+                <span>The Review Guy Verdict</span>
+              </h2>
+              {movie.trg_rating !== null && movie.trg_rating !== undefined && (
+                <div className="flex items-center space-x-2 bg-amber-500/10 border border-amber-500/20 px-4 py-1.5 rounded-full text-base font-extrabold text-amber-400">
+                  <Star className="h-5 w-5 fill-amber-400 text-amber-400" />
+                  <span>TRG Rating: {parseFloat(movie.trg_rating).toFixed(1)} / 10</span>
+                </div>
+              )}
+            </div>
+            
+            {movie.trg_review ? (
+              <div className="space-y-4">
+                <p className="text-gray-300 font-light italic text-base leading-relaxed sm:text-lg">
+                  "{movie.trg_review}"
+                </p>
+                <div className="text-right">
+                  <span className="text-sm font-bold text-amber-400 tracking-wider">— The Review Guy</span>
+                </div>
+              </div>
+            ) : (
+              <p className="text-gray-500 italic text-sm">Rating set. Full written verdict pending.</p>
+            )}
+          </div>
+        ) : (
+          <div className="glass-panel p-6 sm:p-8 rounded-3xl border border-gray-800 bg-gradient-to-r from-white/[0.01] to-transparent text-left flex flex-col sm:flex-row sm:items-center justify-between gap-6">
+            <div className="space-y-2">
+              <h3 className="text-lg font-serif font-semibold text-white">
+                Request Review for {movie.title}
+              </h3>
+              <p className="text-xs text-gray-400 max-w-2xl font-light">
+                There is currently no official verdict or rating for this movie. Let the team know you'd like a review! Vote count increases priority.
+              </p>
+            </div>
+            <button
+              onClick={handleRequestReview}
+              disabled={requestStats.has_requested}
+              className={`px-6 py-3 rounded-full text-xs font-bold tracking-wider transition-all duration-300 cursor-pointer ${
+                requestStats.has_requested
+                  ? 'bg-amber-500/10 border border-amber-500/20 text-amber-400 cursor-default'
+                  : 'bg-amber-500 hover:bg-amber-400 text-black shadow-lg shadow-amber-950/20 hover:shadow-amber-500/25'
+              }`}
+            >
+              {requestStats.has_requested ? `Requested ✓ (${requestStats.count} Votes)` : `Request Review (${requestStats.count} Votes)`}
+            </button>
+          </div>
+        )}
 
         {/* Dashboard Section: Community Stats & User Actions */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
@@ -285,24 +413,11 @@ export default function MovieDetails() {
             </div>
 
             {/* Watch List Action Buttons */}
-            <div className="grid grid-cols-2 gap-4 mt-6">
-              {/* Mark Watched Button */}
-              <button
-                onClick={handleToggleWatched}
-                className={`flex items-center justify-center space-x-2 py-3 rounded-2xl text-xs font-semibold border tracking-wide transition-all cursor-pointer ${
-                  movie.is_watched
-                    ? 'bg-sky-600/10 border-sky-500/40 text-sky-400'
-                    : 'bg-gray-950/60 border-gray-800 hover:border-gray-700 text-gray-300 hover:text-white'
-                }`}
-              >
-                <Eye className={`h-4 w-4 ${movie.is_watched ? 'fill-sky-400/10' : ''}`} />
-                <span>{movie.is_watched ? 'Watched' : 'Mark Watched'}</span>
-              </button>
-
+            <div className="mt-6">
               {/* Watch Later Button */}
               <button
                 onClick={handleToggleWatchLater}
-                className={`flex items-center justify-center space-x-2 py-3 rounded-2xl text-xs font-semibold border tracking-wide transition-all cursor-pointer ${
+                className={`w-full flex items-center justify-center space-x-2 py-3 rounded-2xl text-xs font-semibold border tracking-wide transition-all cursor-pointer ${
                   movie.is_watch_later
                     ? 'bg-amber-600/10 border-amber-500/40 text-amber-400'
                     : 'bg-gray-950/60 border-gray-800 hover:border-gray-700 text-gray-300 hover:text-white'
@@ -375,6 +490,17 @@ export default function MovieDetails() {
             </div>
           </div>
         </div>
+
+        {/* Cinematic Recommendations Section */}
+        {recommendations.length > 0 && (
+          <div className="pt-6 border-t border-gray-900/60">
+            <MovieCarousel
+              title="You May Also Like"
+              movies={recommendations}
+              showStats={false}
+            />
+          </div>
+        )}
 
       </div>
     </div>

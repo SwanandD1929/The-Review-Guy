@@ -7,6 +7,12 @@ import Categories from './pages/Categories';
 import Search from './pages/Search';
 import MovieDetails from './pages/MovieDetails';
 import AddMovie from './pages/AddMovie';
+import Admin from './pages/Admin';
+import MovieBattles from './pages/MovieBattles';
+import CollectionDetails from './pages/CollectionDetails';
+import TVHome from './pages/TVHome';
+import TVDetails from './pages/TVDetails';
+import TVCategories from './pages/TVCategories';
 import './App.css';
 
 // Scroll To Top on route change helper
@@ -34,6 +40,12 @@ function AppContent() {
           <Route path="/search" element={<Search />} />
           <Route path="/movie/:id" element={<MovieDetails />} />
           <Route path="/add-movie" element={<AddMovie />} />
+          <Route path="/admin" element={<Admin />} />
+          <Route path="/battles" element={<MovieBattles />} />
+          <Route path="/collection/:id" element={<CollectionDetails />} />
+          <Route path="/tv" element={<TVHome />} />
+          <Route path="/tv/:id" element={<TVDetails />} />
+          <Route path="/tv/categories" element={<TVCategories />} />
           <Route path="*" element={<Home />} />
         </Routes>
       </main>

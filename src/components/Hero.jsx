@@ -1,12 +1,64 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { motion } from 'framer-motion';
-import { Play, Plus, ChevronDown } from 'lucide-react';
+import { motion, useMotionValue, useSpring } from 'framer-motion';
+import { Play, ChevronDown, LogIn } from 'lucide-react';
 import SearchBar from './SearchBar';
+import cinemaBackdrop from '../assets/cinema_backdrop.png';
 
 export default function Hero({ onExploreClick }) {
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+
+  const heroMouseX = useMotionValue(0);
+  const heroMouseY = useMotionValue(0);
+  const heroSmoothX = useSpring(heroMouseX, { damping: 50, stiffness: 80, mass: 1.0 });
+  const heroSmoothY = useSpring(heroMouseY, { damping: 50, stiffness: 80, mass: 1.0 });
+
+  useEffect(() => {
+    if (prefersReducedMotion) return;
+
+    const handleMouseMove = (e) => {
+      const heroEl = document.getElementById('movies-hero');
+      if (heroEl) {
+        const rect = heroEl.getBoundingClientRect();
+        heroMouseX.set(e.clientX - rect.left);
+        heroMouseY.set(e.clientY - rect.top);
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+    };
+  }, [prefersReducedMotion, heroMouseX, heroMouseY]);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(mediaQuery.matches);
+
+    const handleMotionChange = (e) => {
+      setPrefersReducedMotion(e.matches);
+    };
+
+    mediaQuery.addEventListener('change', handleMotionChange);
+    return () => {
+      mediaQuery.removeEventListener('change', handleMotionChange);
+    };
+  }, []);
+
+  // Generate 28 stable, tiny gold dust particles for a richer cinematic environment
+  const dustParticles = useMemo(() => {
+    return Array.from({ length: 28 }).map((_, i) => ({
+      id: i,
+      size: Math.random() * 2.5 + 1.2, // 1.2px to 3.7px
+      x: Math.random() * 100, // percentage left
+      y: Math.random() * 100, // percentage top
+      duration: Math.random() * 15 + 15, // 15s to 30s
+      delay: Math.random() * -30, // start immediately
+      xOffset: Math.random() * 10 - 5, // side drift
+    }));
+  }, []);
 
   const handleSearchSubmit = (e) => {
     e.preventDefault();
@@ -16,24 +68,114 @@ export default function Hero({ onExploreClick }) {
   };
 
   return (
-    <div className="relative h-[80vh] sm:h-[85vh] lg:h-[90vh] w-full flex items-center justify-center overflow-hidden">
-      {/* Background Image / Backdrop (Supports video component placeholder) */}
-      <div className="absolute inset-0 z-0">
+    <div id="movies-hero" className="relative h-[80vh] sm:h-[85vh] lg:h-[90vh] w-full flex items-center justify-center overflow-hidden bg-black">
+      {/* Background Image / Backdrop with prestigious cinematic overlay */}
+      <div className="absolute inset-0 z-0 w-full h-full overflow-hidden bg-black animate-fade-in">
         <img
-          src="https://images.unsplash.com/photo-1489599849927-2ee91cede3ba?q=80&w=1920"
+          src={cinemaBackdrop}
           alt="Cinematic Movie Theater Backdrop"
-          className="w-full h-full object-cover scale-105 filter brightness-50 contrast-110 saturate-[0.8]"
+          className="w-full h-full object-cover scale-105 filter brightness-[0.45] contrast-[1.1] saturate-[0.6] opacity-65"
         />
-        {/* Soft, rich gradient overlays to blend the image into the page background */}
-        <div className="absolute inset-0 cinematic-overlay z-10" />
+        {/* Soft gradient overlay to blend into the dark page */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/45 to-transparent z-10" />
+        {/* Subtle vignette on the hero itself */}
+        <div className="absolute inset-0 pointer-events-none z-10" style={{ background: 'radial-gradient(circle at center, transparent 40%, rgba(0,0,0,0.7) 100%)' }} />
       </div>
+
+      {/* Local Cursor-Following Gold Spotlight (fades in as curtains open - Boosted & Stronger) */}
+      {!prefersReducedMotion && (
+        <motion.div
+          className="absolute w-[700px] h-[700px] rounded-full pointer-events-none"
+          style={{
+            x: heroSmoothX,
+            y: heroSmoothY,
+            left: -350,
+            top: -350,
+            background: 'radial-gradient(circle, rgba(245, 197, 66, 0.22) 0%, rgba(255, 179, 71, 0.15) 40%, rgba(255, 140, 66, 0.08) 75%, transparent 100%)',
+            filter: 'blur(110px)',
+            zIndex: 10,
+          }}
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1.5, duration: 1.2 }}
+        />
+      )}
+
+      {/* Golden Stage Spotlight (Stronger) */}
+      <div 
+        className="absolute bottom-0 left-1/2 -translate-x-1/2 w-[800px] h-[400px] rounded-full pointer-events-none z-5"
+        style={{
+          background: 'radial-gradient(circle at center, rgba(245, 197, 66, 0.35) 0%, rgba(245, 197, 66, 0.12) 60%, transparent 100%)',
+          filter: 'blur(80px)',
+        }}
+      />
+
+      {/* Subtle floating gold dust particles */}
+      {!prefersReducedMotion && dustParticles.map((p) => (
+        <motion.div
+          key={p.id}
+          className="absolute rounded-full pointer-events-none"
+          style={{
+            width: p.size,
+            height: p.size,
+            left: `${p.x}%`,
+            top: `${p.y}%`,
+            backgroundColor: 'rgba(255, 215, 0, 0.55)',
+            filter: 'blur(0.5px)',
+            zIndex: 10,
+          }}
+          animate={{
+            y: ['110%', '-10%'],
+            x: ['0%', `${p.xOffset}%`],
+            opacity: [0, 0.75, 0.75, 0],
+          }}
+          transition={{
+            duration: p.duration,
+            repeat: Infinity,
+            delay: p.delay,
+            ease: 'linear',
+          }}
+        />
+      ))}
+
+      {/* Left velvet curtain */}
+      <motion.div
+        className="absolute top-0 bottom-0 left-0 w-1/2 z-30 border-r border-[#4a0208]/30 shadow-2xl pointer-events-none"
+        style={{
+          background: 'repeating-linear-gradient(to right, #110001 0px, #260104 20px, #3b0207 40px, #260104 60px, #110001 80px)',
+          boxShadow: 'inset -20px 0 35px rgba(0, 0, 0, 0.95), inset 0 10px 30px rgba(0, 0, 0, 0.8)'
+        }}
+        initial={{ x: 0 }}
+        animate={{ x: '-100%' }}
+        transition={{ 
+          duration: prefersReducedMotion ? 0 : 2.0, 
+          ease: [0.77, 0, 0.175, 1],
+          delay: 0.1 
+        }}
+      />
+
+      {/* Right velvet curtain */}
+      <motion.div
+        className="absolute top-0 bottom-0 right-0 w-1/2 z-30 border-l border-[#4a0208]/30 shadow-2xl pointer-events-none"
+        style={{
+          background: 'repeating-linear-gradient(to right, #110001 0px, #260104 20px, #3b0207 40px, #260104 60px, #110001 80px)',
+          boxShadow: 'inset 20px 0 35px rgba(0, 0, 0, 0.95), inset 0 10px 30px rgba(0, 0, 0, 0.8)'
+        }}
+        initial={{ x: 0 }}
+        animate={{ x: '100%' }}
+        transition={{ 
+          duration: prefersReducedMotion ? 0 : 2.0, 
+          ease: [0.77, 0, 0.175, 1],
+          delay: 0.1 
+        }}
+      />
 
       {/* Hero Content */}
       <div className="relative z-20 max-w-4xl mx-auto px-4 text-center">
         <motion.div
           initial={{ opacity: 0, y: 30 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8, ease: 'easeOut' }}
+          transition={{ delay: 0.6, duration: 1.0, ease: 'easeOut' }}
           className="space-y-6"
         >
           {/* Tagline Badge */}
@@ -75,13 +217,13 @@ export default function Hero({ onExploreClick }) {
               <span>Explore Movies</span>
             </button>
 
-            <Link
-              to="/add-movie"
-              className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-gray-900/60 hover:bg-gray-900 border border-gray-800 hover:border-gray-700 text-white text-sm font-semibold px-8 py-3.5 rounded-full backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5"
+            <button
+              onClick={() => alert("Login / Sign up feature coming soon!")}
+              className="w-full sm:w-auto flex items-center justify-center space-x-2 bg-gray-900/60 hover:bg-gray-900 border border-gray-800 hover:border-gray-700 text-white text-sm font-semibold px-8 py-3.5 rounded-full backdrop-blur-md transition-all duration-300 hover:-translate-y-0.5 cursor-pointer"
             >
-              <Plus className="h-4 w-4 text-amber-500" />
-              <span>Add Movie</span>
-            </Link>
+              <LogIn className="h-4 w-4 text-amber-500" />
+              <span>Login / Sign Up</span>
+            </button>
           </div>
         </motion.div>
       </div>

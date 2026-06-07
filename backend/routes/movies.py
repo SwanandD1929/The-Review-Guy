@@ -5,9 +5,46 @@ from backend.models.rating import Rating
 from backend.models.review import Review
 from backend.models.watched import Watched
 from backend.models.watch_later import WatchLater
+from backend.models.trg_rating import TrgRating
+from backend.models.trg_review import TrgReview
+from backend.models.featured_movie import FeaturedMovie
 from backend.services import tmdb_service
 
 movies_bp = Blueprint('movies', __name__)
+
+def resolve_movie(movie_id_str):
+    if not movie_id_str:
+        return None
+    movie_id_str = str(movie_id_str)
+    if movie_id_str.startswith('ext_'):
+        tmdb_id = int(movie_id_str.replace('ext_', ''))
+        movie = Movie.query.filter_by(tmdb_id=tmdb_id).first()
+        if not movie:
+            # On-the-fly fetch details and import
+            details = tmdb_service.get_movie_details(tmdb_id)
+            if details:
+                movie = Movie(
+                    tmdb_id=tmdb_id,
+                    title=details['title'],
+                    overview=details['overview'],
+                    poster_url=details['poster_url'],
+                    backdrop_url=details['backdrop_url'],
+                    release_date=details['release_date'],
+                    genres=details['genres'],
+                    language=details['language']
+                )
+                db.session.add(movie)
+                db.session.commit()
+        return movie
+    else:
+        try:
+            parsed_id = int(movie_id_str)
+            movie = Movie.query.filter_by(tmdb_id=parsed_id).first()
+            if not movie:
+                movie = Movie.query.get(parsed_id)
+            return movie
+        except ValueError:
+            return None
 
 def get_movie_stats(movie_id, fingerprint=None):
     # Calculate community average rating (1-10)
@@ -53,25 +90,35 @@ def merge_local_data(movies_list, fingerprint=None):
     # Merges database metrics into TMDB lists
     merged = []
     for m in movies_list:
-        local_m = Movie.query.filter_by(tmdb_id=m['tmdb_id']).first()
+        m_copy = dict(m)
+        tmdb_id = m_copy.get('tmdb_id') or m_copy.get('id')
+        if not tmdb_id:
+            continue
+        local_m = Movie.query.filter_by(tmdb_id=tmdb_id).first()
         if local_m:
             stats = get_movie_stats(local_m.id, fingerprint)
+            trg_rating_obj = TrgRating.query.filter_by(movie_id=local_m.id).first()
             m_dict = local_m.to_dict()
             m_dict.update({
                 'community_rating': stats['avg_rating'],
                 'recommendation_percentage': stats['recommendation_percentage'],
                 'watch_count': stats['watch_count'],
-                'local_id': local_m.id
+                'local_id': local_m.id,
+                'trg_rating': trg_rating_obj.rating if trg_rating_obj else None
             })
+            if 'tmdb_id' not in m_dict:
+                m_dict['tmdb_id'] = tmdb_id
             merged.append(m_dict)
         else:
-            m.update({
+            m_copy.update({
+                'tmdb_id': tmdb_id,
                 'community_rating': 0.0,
                 'recommendation_percentage': 0,
                 'watch_count': 0,
-                'local_id': None
+                'local_id': None,
+                'trg_rating': None
             })
-            merged.append(m)
+            merged.append(m_copy)
     return merged
 
 @movies_bp.route('/api/movies/trending', methods=['GET'])
@@ -100,13 +147,15 @@ def get_top_rated():
     rated_movies = []
     for m in all_local:
         stats = get_movie_stats(m.id, fingerprint)
+        trg_rating_obj = TrgRating.query.filter_by(movie_id=m.id).first()
         m_dict = m.to_dict()
         m_dict.update({
             'community_rating': stats['avg_rating'],
             'total_ratings': stats['total_ratings'],
             'recommendation_percentage': stats['recommendation_percentage'],
             'watch_count': stats['watch_count'],
-            'local_id': m.id
+            'local_id': m.id,
+            'trg_rating': trg_rating_obj.rating if trg_rating_obj else None
         })
         rated_movies.append(m_dict)
     # Sort by community rating desc, then total ratings desc
@@ -120,12 +169,14 @@ def get_most_watched():
     watched_movies = []
     for m in all_local:
         stats = get_movie_stats(m.id, fingerprint)
+        trg_rating_obj = TrgRating.query.filter_by(movie_id=m.id).first()
         m_dict = m.to_dict()
         m_dict.update({
             'community_rating': stats['avg_rating'],
             'recommendation_percentage': stats['recommendation_percentage'],
             'watch_count': stats['watch_count'],
-            'local_id': m.id
+            'local_id': m.id,
+            'trg_rating': trg_rating_obj.rating if trg_rating_obj else None
         })
         watched_movies.append(m_dict)
     # Sort by watch count desc
@@ -172,10 +223,10 @@ def search():
         'tmdb': tmdb_results
     })
 
-@movies_bp.route('/api/movie/<int:movie_id>', methods=['GET'])
+@movies_bp.route('/api/movie/<string:movie_id>', methods=['GET'])
 def get_movie(movie_id):
     fingerprint = request.args.get('fingerprint')
-    movie = Movie.query.get(movie_id)
+    movie = resolve_movie(movie_id)
     if not movie:
         return jsonify({'error': 'Movie not found'}), 404
         
@@ -196,6 +247,8 @@ def get_movie(movie_id):
             'rating': rev_rating.rating if rev_rating else None
         })
 
+    trg_rating_obj = TrgRating.query.filter_by(movie_id=movie.id).first()
+    trg_review_obj = TrgReview.query.filter_by(movie_id=movie.id).first()
     m_dict = movie.to_dict()
     # Add stats
     m_dict.update({
@@ -207,7 +260,9 @@ def get_movie(movie_id):
         'user_rating': stats['user_rating'],
         'is_watched': stats['is_watched'],
         'is_watch_later': stats['is_watch_later'],
-        'reviews': reviews_data
+        'reviews': reviews_data,
+        'trg_rating': trg_rating_obj.rating if trg_rating_obj else None,
+        'trg_review': trg_review_obj.review_text if trg_review_obj else None
     })
     
     # Query additional attributes from TMDB if applicable
@@ -299,7 +354,7 @@ def add_movie():
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@movies_bp.route('/api/movie/<int:movie_id>/rate', methods=['POST'])
+@movies_bp.route('/api/movie/<string:movie_id>/rate', methods=['POST'])
 def rate_movie(movie_id):
     data = request.get_json() or {}
     fingerprint = data.get('fingerprint')
@@ -311,28 +366,34 @@ def rate_movie(movie_id):
         return jsonify({'error': 'Rating must be an integer between 1 and 10'}), 400
         
     # Check if movie exists
-    movie = Movie.query.get(movie_id)
+    movie = resolve_movie(movie_id)
     if not movie:
         return jsonify({'error': 'Movie not found'}), 404
         
     # Anti-spam logic: Check if fingerprint has already rated this movie
-    rating_obj = Rating.query.filter_by(movie_id=movie_id, fingerprint=fingerprint).first()
+    rating_obj = Rating.query.filter_by(movie_id=movie.id, fingerprint=fingerprint).first()
     if rating_obj:
-        # Update existing
-        rating_obj.rating = rating_val
+      # Update existing
+      rating_obj.rating = rating_val
     else:
-        # Create new
-        rating_obj = Rating(movie_id=movie_id, fingerprint=fingerprint, rating=rating_val)
-        db.session.add(rating_obj)
+      # Create new
+      rating_obj = Rating(movie_id=movie.id, fingerprint=fingerprint, rating=rating_val)
+      db.session.add(rating_obj)
+        
+    # Rate = Watched Logic: Automatically mark movie as watched if not already
+    existing_watched = Watched.query.filter_by(movie_id=movie.id, fingerprint=fingerprint).first()
+    if not existing_watched:
+      watched_obj = Watched(movie_id=movie.id, fingerprint=fingerprint)
+      db.session.add(watched_obj)
         
     try:
-        db.session.commit()
-        return jsonify({'success': True, 'rating': rating_obj.to_dict()})
+      db.session.commit()
+      return jsonify({'success': True, 'rating': rating_obj.to_dict()})
     except Exception as e:
-        db.session.rollback()
-        return jsonify({'error': str(e)}), 500
+      db.session.rollback()
+      return jsonify({'error': str(e)}), 500
 
-@movies_bp.route('/api/movie/<int:movie_id>/review', methods=['POST'])
+@movies_bp.route('/api/movie/<string:movie_id>/review', methods=['POST'])
 def add_review(movie_id):
     data = request.get_json() or {}
     fingerprint = data.get('fingerprint')
@@ -344,12 +405,11 @@ def add_review(movie_id):
         return jsonify({'error': 'Review text is required'}), 400
         
     # Check if movie exists
-    movie = Movie.query.get(movie_id)
+    movie = resolve_movie(movie_id)
     if not movie:
         return jsonify({'error': 'Movie not found'}), 404
         
-    # Review anti-spam: let's save the review (can write multiple reviews, or update? Standard Letterboxd lets you write multiple reviews, but we can just append a new review entry)
-    new_review = Review(movie_id=movie_id, fingerprint=fingerprint, review_text=review_text.strip())
+    new_review = Review(movie_id=movie.id, fingerprint=fingerprint, review_text=review_text.strip())
     db.session.add(new_review)
     
     try:
@@ -359,7 +419,7 @@ def add_review(movie_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@movies_bp.route('/api/movie/<int:movie_id>/watched', methods=['POST'])
+@movies_bp.route('/api/movie/<string:movie_id>/watched', methods=['POST'])
 def toggle_watched(movie_id):
     data = request.get_json() or {}
     fingerprint = data.get('fingerprint')
@@ -368,17 +428,17 @@ def toggle_watched(movie_id):
         return jsonify({'error': 'Fingerprint is required'}), 400
         
     # Check if movie exists
-    movie = Movie.query.get(movie_id)
+    movie = resolve_movie(movie_id)
     if not movie:
         return jsonify({'error': 'Movie not found'}), 404
         
     # Toggle watched
-    watched_obj = Watched.query.filter_by(movie_id=movie_id, fingerprint=fingerprint).first()
+    watched_obj = Watched.query.filter_by(movie_id=movie.id, fingerprint=fingerprint).first()
     is_watched = False
     if watched_obj:
         db.session.delete(watched_obj)
     else:
-        watched_obj = Watched(movie_id=movie_id, fingerprint=fingerprint)
+        watched_obj = Watched(movie_id=movie.id, fingerprint=fingerprint)
         db.session.add(watched_obj)
         is_watched = True
         
@@ -389,7 +449,7 @@ def toggle_watched(movie_id):
         db.session.rollback()
         return jsonify({'error': str(e)}), 500
 
-@movies_bp.route('/api/movie/<int:movie_id>/watch-later', methods=['POST'])
+@movies_bp.route('/api/movie/<string:movie_id>/watch-later', methods=['POST'])
 def toggle_watch_later(movie_id):
     data = request.get_json() or {}
     fingerprint = data.get('fingerprint')
@@ -398,17 +458,17 @@ def toggle_watch_later(movie_id):
         return jsonify({'error': 'Fingerprint is required'}), 400
         
     # Check if movie exists
-    movie = Movie.query.get(movie_id)
+    movie = resolve_movie(movie_id)
     if not movie:
         return jsonify({'error': 'Movie not found'}), 404
         
     # Toggle watch later
-    wl_obj = WatchLater.query.filter_by(movie_id=movie_id, fingerprint=fingerprint).first()
+    wl_obj = WatchLater.query.filter_by(movie_id=movie.id, fingerprint=fingerprint).first()
     is_watch_later = False
     if wl_obj:
         db.session.delete(wl_obj)
     else:
-        wl_obj = WatchLater(movie_id=movie_id, fingerprint=fingerprint)
+        wl_obj = WatchLater(movie_id=movie.id, fingerprint=fingerprint)
         db.session.add(wl_obj)
         is_watch_later = True
         
@@ -459,3 +519,153 @@ def get_user_stats():
         'reviews_count': reviews_count,
         'ratings_count': ratings_count
     })
+
+@movies_bp.route('/api/movie/featured', methods=['GET'])
+def get_featured_movie():
+    featured = FeaturedMovie.query.filter_by(active=True).order_by(FeaturedMovie.created_at.desc()).first()
+    if not featured:
+        return jsonify(None)
+    
+    movie = Movie.query.get(featured.movie_id)
+    if not movie:
+        return jsonify(None)
+    
+    trg_rating_obj = TrgRating.query.filter_by(movie_id=movie.id).first()
+    
+    m_dict = movie.to_dict()
+    m_dict.update({
+        'trg_rating': trg_rating_obj.rating if trg_rating_obj else None,
+        'short_verdict': featured.short_verdict,
+        'local_id': movie.id
+    })
+    return jsonify(m_dict)
+
+@movies_bp.route('/api/movie/featured', methods=['POST'])
+def set_featured_movie():
+    data = request.get_json() or {}
+    movie_id = data.get('movie_id')
+    short_verdict = data.get('short_verdict')
+    
+    if not movie_id:
+        return jsonify({'error': 'movie_id is required'}), 400
+        
+    movie = resolve_movie(movie_id)
+    if not movie:
+        return jsonify({'error': 'Movie not found'}), 404
+        
+    FeaturedMovie.query.update({FeaturedMovie.active: False})
+    
+    new_featured = FeaturedMovie(movie_id=movie.id, short_verdict=short_verdict, active=True)
+    db.session.add(new_featured)
+    
+    try:
+        db.session.commit()
+        return jsonify(new_featured.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@movies_bp.route('/api/movie/featured', methods=['DELETE'])
+def remove_featured_movie():
+    FeaturedMovie.query.update({FeaturedMovie.active: False})
+    try:
+        db.session.commit()
+        return jsonify({'success': True}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@movies_bp.route('/api/movie/<string:movie_id>/trg', methods=['POST'])
+def save_trg_stats(movie_id):
+    data = request.get_json() or {}
+    rating = data.get('rating')
+    review_text = data.get('review_text')
+    
+    movie = resolve_movie(movie_id)
+    if not movie:
+        return jsonify({'error': 'Movie not found'}), 404
+        
+    if rating is not None:
+        trg_rating = TrgRating.query.filter_by(movie_id=movie.id).first()
+        if trg_rating:
+            if rating == "" or rating is None:
+                db.session.delete(trg_rating)
+            else:
+                trg_rating.rating = float(rating)
+        elif rating != "" and rating is not None:
+            trg_rating = TrgRating(movie_id=movie.id, rating=float(rating))
+            db.session.add(trg_rating)
+            
+    if review_text is not None:
+        trg_review = TrgReview.query.filter_by(movie_id=movie.id).first()
+        if trg_review:
+            if review_text == "" or review_text is None:
+                db.session.delete(trg_review)
+            else:
+                trg_review.review_text = review_text
+        elif review_text != "" and review_text is not None:
+            trg_review = TrgReview(movie_id=movie.id, review_text=review_text)
+            db.session.add(trg_review)
+            
+    try:
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@movies_bp.route('/api/movie/<string:movie_id>', methods=['DELETE'])
+def delete_movie(movie_id):
+    movie = resolve_movie(movie_id)
+    if not movie:
+        return jsonify({'error': 'Movie not found'}), 404
+        
+    try:
+        db.session.delete(movie)
+        db.session.commit()
+        return jsonify({'success': True})
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@movies_bp.route('/api/movie/<string:movie_id>/metadata', methods=['PUT'])
+def update_movie_metadata(movie_id):
+    movie = resolve_movie(movie_id)
+    if not movie:
+        return jsonify({'error': 'Movie not found'}), 404
+        
+    data = request.get_json() or {}
+    if 'title' in data:
+        movie.title = data['title']
+    if 'release_date' in data:
+        movie.release_date = data['release_date']
+    if 'genres' in data:
+        g = data['genres']
+        movie.genres = ", ".join(g) if isinstance(g, list) else g
+    if 'poster_url' in data:
+        movie.poster_url = data['poster_url']
+    if 'backdrop_url' in data:
+        movie.backdrop_url = data['backdrop_url']
+    if 'overview' in data:
+        movie.overview = data['overview']
+    if 'language' in data:
+        movie.language = data['language']
+    if 'youtube_review_url' in data:
+        movie.youtube_review_url = data['youtube_review_url']
+        
+    try:
+        db.session.commit()
+        return jsonify(movie.to_dict())
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({'error': str(e)}), 500
+
+@movies_bp.route('/api/movie/<string:movie_id>/trailer', methods=['GET'])
+def get_movie_trailer(movie_id):
+    movie = resolve_movie(movie_id)
+    if not movie or not movie.tmdb_id:
+        return jsonify({'trailer_url': None})
+        
+    trailer_url = tmdb_service.get_trailer_url('movie', movie.tmdb_id)
+    return jsonify({'trailer_url': trailer_url})
+

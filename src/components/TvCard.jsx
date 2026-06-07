@@ -2,13 +2,13 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import { Star, Eye, ThumbsUp, Calendar } from 'lucide-react';
 
-export default function MovieCard({ movie, showStats = true }) {
-  // Determine link target - prioritize TMDB ID as /movie/ext_<tmdb_id>
-  const detailsUrl = movie.tmdb_id ? `/movie/ext_${movie.tmdb_id}` : `/movie/${movie.id}`;
+export default function TvCard({ show, showStats = true }) {
+  // Determine link target - prioritize TMDB ID as /tv/ext_<tmdb_id>
+  const detailsUrl = show.tmdb_id ? `/tv/ext_${show.tmdb_id}` : `/tv/${show.id}`;
   
-  const communityRating = movie.community_rating ? parseFloat(movie.community_rating).toFixed(1) : null;
-  const recPct = movie.recommendation_percentage || 0;
-  const watchCount = movie.watch_count || 0;
+  const communityRating = show.community_rating ? parseFloat(show.community_rating).toFixed(1) : null;
+  const recPct = show.recommendation_percentage || 0;
+  const watchCount = show.watch_count || 0;
 
   const getYear = (dateStr) => {
     if (!dateStr) return '';
@@ -20,19 +20,19 @@ export default function MovieCard({ movie, showStats = true }) {
       {/* Poster Wrapper */}
       <div className="relative aspect-[2/3] w-full rounded-2xl overflow-hidden glass-card cursor-pointer">
         <img
-          src={movie.poster_url}
-          alt={`${movie.title} Poster`}
+          src={show.poster_url}
+          alt={`${show.title} Poster`}
           loading="lazy"
           className="w-full h-full object-cover transition-transform duration-500 ease-out group-hover:scale-105"
         />
 
         {/* Rating overlays inside poster */}
-        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-20">
+        <div className="absolute top-3 left-3 flex flex-col gap-1.5 z-25">
           {/* TRG (Moderator) Rating */}
-          {movie.trg_rating !== undefined && movie.trg_rating !== null && parseFloat(movie.trg_rating) > 0 ? (
+          {show.trg_rating !== undefined && show.trg_rating !== null && parseFloat(show.trg_rating) > 0 ? (
             <div className="flex items-center space-x-1 bg-black/75 backdrop-blur-md border border-amber-500/30 px-2 py-0.5 rounded-full text-[10px] font-bold text-amber-400">
               <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
-              <span>TRG {parseFloat(movie.trg_rating).toFixed(1)}</span>
+              <span>TRG {parseFloat(show.trg_rating).toFixed(1)}</span>
             </div>
           ) : null}
           {/* Community Rating */}
@@ -57,19 +57,19 @@ export default function MovieCard({ movie, showStats = true }) {
         </div>
       </div>
 
-      {/* Movie Text Info */}
+      {/* TV Text Info */}
       <div className="mt-3 flex flex-col space-y-1 text-left px-1">
         {/* Title */}
         <Link to={detailsUrl} className="text-sm font-semibold text-gray-200 group-hover:text-amber-400 transition-colors line-clamp-1">
-          {movie.title}
+          {show.title}
         </Link>
 
         {/* Genre & Year */}
         <div className="flex items-center justify-between text-[11px] text-gray-400 font-light">
-          <span className="truncate max-w-[70%]">{movie.genres ? (Array.isArray(movie.genres) ? movie.genres[0] : movie.genres.split(',')[0]) : 'Drama'}</span>
+          <span className="truncate max-w-[70%]">{show.genres ? (Array.isArray(show.genres) ? show.genres[0] : show.genres.split(',')[0]) : 'Drama'}</span>
           <span className="flex items-center space-x-0.5">
             <Calendar className="h-3 w-3 text-gray-500" />
-            <span>{getYear(movie.release_date) || 'N/A'}</span>
+            <span>{getYear(show.release_date) || 'N/A'}</span>
           </span>
         </div>
 

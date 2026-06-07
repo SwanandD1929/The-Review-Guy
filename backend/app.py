@@ -8,6 +8,7 @@ from backend.models.rating import Rating
 from backend.models.review import Review
 from backend.models.watched import Watched
 from backend.routes.movies import movies_bp
+from backend.routes.tv_shows import tv_shows_bp
 from backend.services import tmdb_service
 
 app = Flask(__name__)
@@ -20,8 +21,9 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
 
-# Register blueprint
+# Register blueprints
 app.register_blueprint(movies_bp)
+app.register_blueprint(tv_shows_bp)
 
 # Curated reviews list for seeding
 SEED_REVIEWS = [
@@ -68,9 +70,38 @@ def seed_database():
             db.session.rollback()
             print(f"Error seeding database: {e}")
 
+def update_seeded_movies():
+    for m in tmdb_service.MOCK_MOVIES:
+        # Since MOCK_MOVIES now has tmdb_id populated:
+        movie = Movie.query.filter_by(tmdb_id=m['tmdb_id']).first()
+        if movie:
+            if movie.poster_url != m['poster_url']:
+                movie.poster_url = m['poster_url']
+            if movie.backdrop_url != m['backdrop_url']:
+                movie.backdrop_url = m['backdrop_url']
+    try:
+        db.session.commit()
+    except Exception as e:
+        db.session.rollback()
+        print(f"Error updating seeded movies: {e}")
+
+def alter_tables_on_startup():
+    try:
+        with db.engine.connect() as conn:
+            columns = [row[1] for row in conn.execute(db.text("PRAGMA table_info(movies)")).fetchall()]
+            if 'youtube_review_url' not in columns:
+                print("Adding column youtube_review_url to movies table...")
+                conn.execute(db.text("ALTER TABLE movies ADD COLUMN youtube_review_url TEXT"))
+                conn.commit()
+                print("Column youtube_review_url added successfully!")
+    except Exception as e:
+        print(f"Error altering movies table: {e}")
+
 with app.app_context():
+    alter_tables_on_startup()
     db.create_all()
     seed_database()
+    update_seeded_movies()
 
 if __name__ == '__main__':
     app.run(port=5000, debug=True)
