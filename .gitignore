@@ -35,3 +35,6 @@ backend/instance/
 .envgit rm --cached backend/logicverse.db
 git rm --cached -r backend/__pycache__
 git rm --cached backend/.env
+
+.env
+backend/.env
