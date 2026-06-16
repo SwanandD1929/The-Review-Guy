@@ -22,3 +22,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+
+# Backend
+backend/.env
+backend/__pycache__/
+backend/*.pyc
+backend/*.db
+backend/instance/
+
+# Secrets
+.envgit rm --cached backend/logicverse.db
+git rm --cached -r backend/__pycache__
+git rm --cached backend/.env

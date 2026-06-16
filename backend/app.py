@@ -14,9 +14,12 @@ from backend.services import tmdb_service
 app = Flask(__name__)
 CORS(app)  # Enable CORS for frontend requests
 
-# SQLite database setup
+# Database setup - allows environment override (e.g. Postgres in production)
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = f"sqlite:///{os.path.join(BASE_DIR, 'logicverse.db')}"
+database_url = os.environ.get('DATABASE_URL')
+if database_url and database_url.startswith("postgres://"):
+    database_url = database_url.replace("postgres://", "postgresql://", 1)
+app.config['SQLALCHEMY_DATABASE_URI'] = database_url or f"sqlite:///{os.path.join(BASE_DIR, 'logicverse.db')}"
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 
 db.init_app(app)
@@ -104,4 +107,6 @@ with app.app_context():
     update_seeded_movies()
 
 if __name__ == '__main__':
-    app.run(port=5000, debug=True)
+    # Bind to 0.0.0.0 and port from environment variable for deployment compatibility
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port, debug=True)

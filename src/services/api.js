@@ -42,7 +42,7 @@ export const ensureBackdropUrl = (backdrop) => {
   return `https://image.tmdb.org/t/p/original/${str}`;
 };
 
-const API_BASE_URL = 'http://localhost:5000';
+const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000';
 const fingerprint = getFingerprint();
 
 const api = axios.create({
